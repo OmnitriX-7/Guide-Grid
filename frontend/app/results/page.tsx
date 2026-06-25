@@ -8,11 +8,10 @@ import {
   Map as MapIcon, List, CheckCircle, Clock, AlertCircle, UserPlus
 } from "lucide-react";
 import EnrollModal from "@/components/EnrollModal";
+import StarRating from "@/components/StarRating";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
-// Dynamically import the map with SSR disabled.
-// Leaflet uses browser-only APIs (window, document) so it cannot run on the server.
 const CentresMap = dynamic(() => import("@/components/CentresMap"), {
   ssr: false,
   loading: () => (
@@ -22,7 +21,6 @@ const CentresMap = dynamic(() => import("@/components/CentresMap"), {
   ),
 });
 
-// Centre type now includes lat/lng so we can place map markers
 interface Centre {
   id: string;
   name: string;
@@ -35,13 +33,14 @@ interface Centre {
   verified: boolean;
   lat: number;
   lng: number;
+  avg_rating: number;
+  review_count: number;
 }
 
 function ResultsPageInner() {
   const searchParams = useSearchParams();
   const router = useRouter();
 
-  // Parse the user's coordinates from URL params
   const userLat = parseFloat(searchParams.get("lat") || "0");
   const userLng = parseFloat(searchParams.get("lng") || "0");
 
@@ -54,7 +53,6 @@ function ResultsPageInner() {
   useEffect(() => {
     const fetchResults = async () => {
       if (!userLat || !userLng) return;
-
       try {
         const response = await fetch(`${API_URL}/api/search`, {
           method: "POST",
@@ -66,9 +64,7 @@ function ResultsPageInner() {
             type: searchParams.get("type"),
           }),
         });
-
         if (!response.ok) throw new Error(`Server error ${response.status}`);
-
         const data = await response.json();
         if (data.success) setResults(data.data);
         else setFetchError(true);
@@ -78,13 +74,11 @@ function ResultsPageInner() {
         setLoading(false);
       }
     };
-
     fetchResults();
   }, [searchParams]);
 
   return (
     <main className="min-h-screen bg-gray-50 pb-10">
-
       {enrollTarget && (
         <EnrollModal
           centreId={enrollTarget.id}
@@ -121,7 +115,6 @@ function ResultsPageInner() {
           <div className="text-center text-gray-500 mt-20 animate-pulse">
             Searching for nearby centres...
           </div>
-
         ) : fetchError ? (
           <div className="text-center mt-20 bg-white p-8 rounded-2xl border border-red-100 shadow-sm">
             <AlertCircle className="h-10 w-10 text-red-400 mx-auto mb-3" />
@@ -131,7 +124,6 @@ function ResultsPageInner() {
               Go Back
             </button>
           </div>
-
         ) : results.length === 0 ? (
           <div className="text-center mt-20 bg-white p-8 rounded-2xl border border-gray-200 shadow-sm">
             <h2 className="text-xl font-bold text-gray-800 mb-2">No centres found!</h2>
@@ -140,15 +132,8 @@ function ResultsPageInner() {
               Go Back
             </button>
           </div>
-
         ) : view === "map" ? (
-          // Real map — replaces the "coming soon" placeholder
-          <CentresMap
-            userLat={userLat}
-            userLng={userLng}
-            centres={results}
-          />
-
+          <CentresMap userLat={userLat} userLng={userLng} centres={results} />
         ) : (
           <div className="space-y-4">
             <p className="text-sm font-medium text-gray-500 mb-4">
@@ -178,6 +163,14 @@ function ResultsPageInner() {
                         {centre.distance_km.toFixed(1)} km away
                       </span>
                     </p>
+                    {/* Star rating shown on card */}
+                    <div className="mt-1.5">
+                      <StarRating
+                        rating={parseFloat(Number(centre.avg_rating || 0).toFixed(1))}
+                        count={centre.review_count || 0}
+                        size="sm"
+                      />
+                    </div>
                   </div>
                   <span className="bg-blue-50 text-blue-700 text-xs font-semibold px-2.5 py-1 rounded-full uppercase tracking-wider">
                     {centre.type}

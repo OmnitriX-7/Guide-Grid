@@ -4,9 +4,11 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
   MapPin, Phone, MessageCircle, ArrowLeft,
-  Clock, IndianRupee, Languages, CheckCircle, Navigation, UserPlus
+  Clock, IndianRupee, Languages, CheckCircle, Navigation, UserPlus, Star
 } from "lucide-react";
 import EnrollModal from "@/components/EnrollModal";
+import ReviewModal from "@/components/ReviewModal";
+import StarRating from "@/components/StarRating";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
@@ -20,6 +22,16 @@ interface CentreDetails {
   batch_timings: string;
   language_medium: string;
   verified: boolean;
+  avg_rating: number;
+  review_count: number;
+}
+
+interface Review {
+  id: string;
+  reviewer_name: string;
+  rating: number;
+  comment: string | null;
+  created_at: string;
 }
 
 export default function CentreDetailPage() {
@@ -27,25 +39,46 @@ export default function CentreDetailPage() {
   const router = useRouter();
 
   const [centre, setCentre] = useState<CentreDetails | null>(null);
+  const [reviews, setReviews] = useState<Review[]>([]);
   const [loading, setLoading] = useState(true);
   const [showEnroll, setShowEnroll] = useState(false);
+  const [showReview, setShowReview] = useState(false);
+
+  const fetchCentre = async () => {
+    try {
+      const response = await fetch(`${API_URL}/api/centre/${params.id}`);
+      if (!response.ok) throw new Error(`Server error ${response.status}`);
+      const data = await response.json();
+      if (data.success) setCentre(data.data);
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchReviews = async () => {
+    try {
+      const response = await fetch(`${API_URL}/api/reviews/${params.id}`);
+      const data = await response.json();
+      if (data.success) setReviews(data.data);
+    } catch (error) {
+      console.error(error);
+    }
+  };
 
   useEffect(() => {
-    const fetchCentre = async () => {
-      try {
-        const response = await fetch(`${API_URL}/api/centre/${params.id}`);
-        if (!response.ok) throw new Error(`Server error ${response.status}`);
-        const data = await response.json();
-        if (data.success) setCentre(data.data);
-      } catch (error) {
-        console.error(error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    if (params.id) fetchCentre();
+    if (params.id) {
+      fetchCentre();
+      fetchReviews();
+    }
   }, [params.id]);
+
+  // Called after a review is submitted to refresh both centre and reviews
+  const handleReviewSubmitted = () => {
+    fetchCentre();
+    fetchReviews();
+  };
 
   if (loading) {
     return (
@@ -68,13 +101,19 @@ export default function CentreDetailPage() {
 
   return (
     <main className="min-h-screen bg-gray-50 pb-10">
-
-      {/* Enroll modal */}
       {showEnroll && (
         <EnrollModal
           centreId={centre.id}
           centreName={centre.name}
           onClose={() => setShowEnroll(false)}
+        />
+      )}
+      {showReview && (
+        <ReviewModal
+          centreId={centre.id}
+          centreName={centre.name}
+          onClose={() => setShowReview(false)}
+          onReviewSubmitted={handleReviewSubmitted}
         />
       )}
 
@@ -89,9 +128,9 @@ export default function CentreDetailPage() {
 
       <div className="max-w-2xl mx-auto mt-6 px-4 space-y-6">
 
-        {/* Name, type & address */}
+        {/* Name, type, address & rating */}
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-          <div className="flex justify-between items-start mb-4">
+          <div className="flex justify-between items-start mb-2">
             <div>
               <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
                 {centre.name}
@@ -101,6 +140,15 @@ export default function CentreDetailPage() {
                 {centre.type}
               </span>
             </div>
+          </div>
+
+          {/* Average rating */}
+          <div className="mt-3">
+            <StarRating
+              rating={parseFloat(Number(centre.avg_rating || 0).toFixed(1))}
+              count={centre.review_count || 0}
+              size="md"
+            />
           </div>
 
           <p className="text-gray-600 flex items-start gap-2 mt-4">
@@ -152,7 +200,7 @@ export default function CentreDetailPage() {
           </div>
         </div>
 
-        {/* Action buttons — now 3 */}
+        {/* Action buttons */}
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
           <div className="flex flex-col sm:flex-row gap-3">
             <a
@@ -169,7 +217,6 @@ export default function CentreDetailPage() {
             >
               <MessageCircle className="h-5 w-5" /> WhatsApp
             </a>
-            {/* Enroll button */}
             <button
               onClick={() => setShowEnroll(true)}
               className="flex-1 flex justify-center items-center gap-2 bg-blue-600 text-white py-3 px-4 rounded-xl font-medium hover:bg-blue-700 transition"
@@ -177,6 +224,52 @@ export default function CentreDetailPage() {
               <UserPlus className="h-5 w-5" /> Enroll Now
             </button>
           </div>
+        </div>
+
+        {/* Reviews section */}
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+          <div className="flex items-center justify-between mb-5">
+            <h2 className="text-lg font-bold text-gray-900">
+              Reviews{" "}
+              <span className="text-gray-400 font-normal text-sm">
+                ({centre.review_count || 0})
+              </span>
+            </h2>
+            <button
+              onClick={() => setShowReview(true)}
+              className="flex items-center gap-1.5 text-sm font-medium text-blue-600 hover:text-blue-700 transition border border-blue-200 px-3 py-1.5 rounded-lg hover:bg-blue-50"
+            >
+              <Star className="h-4 w-4" /> Write a Review
+            </button>
+          </div>
+
+          {reviews.length === 0 ? (
+            <div className="text-center py-8 text-gray-400">
+              <Star className="h-10 w-10 mx-auto mb-2 text-gray-200" />
+              <p className="text-sm">No reviews yet. Be the first to review!</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {reviews.map((review) => (
+                <div key={review.id} className="border-b border-gray-100 pb-4 last:border-0 last:pb-0">
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="font-semibold text-gray-800 text-sm">{review.reviewer_name}</p>
+                    <p className="text-xs text-gray-400">
+                      {new Date(review.created_at).toLocaleDateString("en-IN", {
+                        day: "numeric",
+                        month: "short",
+                        year: "numeric",
+                      })}
+                    </p>
+                  </div>
+                  <StarRating rating={review.rating} size="sm" />
+                  {review.comment && (
+                    <p className="text-sm text-gray-600 mt-2">{review.comment}</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
       </div>
